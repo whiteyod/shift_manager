@@ -4,6 +4,7 @@ from loguru import logger
 
 from app.api.v1.router import router as v1_router
 from app.core.config import settings
+from app.db.session import init_db
 
 
 # Create app instance
@@ -12,7 +13,7 @@ def create_app() -> FastAPI:
         title='Shift Manager API',
         description='API for shift planning and management',
         version='0.1.0',
-        dosc_url='/docs',
+        docs_url='/docs',
         redoc_url='/redoc'
     )
     # Set up CORS
@@ -31,7 +32,6 @@ def create_app() -> FastAPI:
     # Add event to init DB
     @app.on_event('startup')
     async def startup_event():
-        from app.db.session import init_db
         init_db()
         logger.info('Database initialized')
     
