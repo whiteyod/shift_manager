@@ -20,6 +20,7 @@ python-dotenv = "^1.0.1"
 # Auth deps (we’ll use soon; safe to include now)
 python-jose = { extras = ["cryptography"], version = "^3.3.0" }
 passlib = { extras = ["bcrypt"], version = "^1.7.4" }
+loguru = "^0.7.3"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
