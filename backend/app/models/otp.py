@@ -8,7 +8,7 @@ class OtpCode(SQLModel, table=True):
     ''' Stores OTP verification attempts.
      Notes:
     - Store only a hash of the OTP code.
-    - Enforece expiry and attempt limits.
+    - Enforce expiry and attempt limits.
     '''
     id: UUID = Field(default_factory=uuid4, primary_key=True, index=True)
     phone_e164: str = Field(index=True, max_length=20)
