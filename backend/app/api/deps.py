@@ -9,7 +9,7 @@ from app.models.user import User
 
 
 # This tells fastapi where frontend can obtain tokens
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl='/v1/auth/otp/vetify')
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl='/v1/auth/otp/verify')
 def get_current_user(
     session: Session = Depends(get_session),
     token: str = Depends(oauth2_scheme)
@@ -30,13 +30,13 @@ def get_current_user(
         user_id = UUID(user_id_str)
     except ValueError:
         raise HTTPException(
-            satus_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail='Invalid \'sub\' claim in token'
         )
     user = session.exec(select(User).where(User.id == user_id)).first()
     if user is None or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail='User not found or incative'
+            detail='User not found or inactive'
         )
     return user

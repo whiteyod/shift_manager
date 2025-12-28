@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
-from jose import jwt
+from jose import jwt, JWTError
 from app.core.config import settings
 
 
@@ -32,7 +32,7 @@ def decode_access_token(token: str) -> dict:
             token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
         )
         return decoded_token
-    except ValueError:
+    except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail='incorrect access token'
