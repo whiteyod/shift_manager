@@ -22,4 +22,5 @@ def get_session() -> Generator[Session, None, None]:
 # Create tables
 def init_db() -> None:
     import app.models
-    SQLModel.metadata.create_all(engine)
+    with engine.connect() as conn:
+        pass
