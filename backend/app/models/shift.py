@@ -13,7 +13,7 @@ class Shift(SQLModel, table=True):
     '''
     id: UUID = Field(default_factory=uuid4, primary_key=True, index=True)
     restaurant_id: UUID = Field(foreign_key='restaurant.id', index=True)
-    user_id: UUID = Filed(foreign_key='user.id', index=True)
+    user_id: UUID = Field(foreign_key='user.id', index=True)
     start_at: datetime = Field(index=True)
     end_at: datetime = Field(index=True)
     created_at: datetime = Field(
