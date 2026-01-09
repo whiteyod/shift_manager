@@ -19,7 +19,7 @@ router = APIRouter(tags=['shifts'])
 def _utc_native(dt: datetime) -> datetime:
     ''' Normalize datetime for DB comparisons.
      Why:
-    - Your DB columns are currently TIMESTAMP WITHOUT TIME ZONE,
+    - DB columns are currently TIMESTAMP WITHOUT TIME ZONE,
       so values may come back as naive.
     - Comparing naive and aware datetimes raises TypeError.
     '''
