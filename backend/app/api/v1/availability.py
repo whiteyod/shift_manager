@@ -2,11 +2,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlmodel import Session, select
+from sqlmodel import Session, select, delete
 from app.api.deps import get_current_user
 from app.api.v1.shifts import _require_manager_permission, _require_membership
 from app.db.session import get_session
-from app.models.availability import AvailabilityRequest, AvailabilityRequestCreate
+from app.models.availability import AvailabilityRequestCreate, \
+    AvailabilityRequest, AvailabilitySubmission, AvailabilityDay, \
+        AvailabilitySubmissionUpdate
 from app.models.user import User
 
 
@@ -27,7 +29,10 @@ def request_availability(
     current_user: User = Depends(get_current_user),
     payload: AvailabilityRequestCreate
 ) -> dict:
-    ''' Owner or Manager sends a request to eployee to get their availability.
+    '''Create a monthly availability request for a restaurant.
+
+    Owners/managers use this to open a time window in which employees can
+    submit or update their availability for the target (year, month).
     '''
     check_membership = _require_membership(
         session=session,
@@ -36,11 +41,11 @@ def request_availability(
     )
     _require_manager_permission(check_membership)
     # Check month range
-    # TODO: make an option to request availabilty weekly/two times per month
+    # TODO: add an option to request availability weekly / twice per month
     if payload.month < 1 or payload.month > 12:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail='month must be an integer between 1 and 12'
+            detail='Month must be an integer between 1 and 12'
         )
     # Get closes_at date
     closes_at_utc = payload.closes_at_utc
@@ -55,7 +60,7 @@ def request_availability(
     # Normalize datetime timezones into UTC for storage
     opens_at_utc = opens_at_utc.astimezone(timezone.utc)
     closes_at_utc = closes_at_utc.astimezone(timezone.utc)
-    # Check is open/close date are not crossing
+    # Validate the open/close window
     if closes_at_utc <= opens_at_utc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -96,8 +101,162 @@ def request_availability(
         'closes_at_utc': req.closes_at_utc.isoformat(),
         'created_by_user_id': str(req.created_by_user_id)
     }
-    
 
-    
+
+# Employee creates his submission
+@router.get('/availability/requests/{request_id}/my-submission')
+def get_create_submission(
+    *,
+    request_id: UUID,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+) -> dict:
+    '''Get or create the current user's submission for a given request.
+
+    - Before opens_at_utc: no draft submissions are allowed.
+    - While open (now < closes_at_utc): create submission if missing.
+    - After close (now >= closes_at_utc): allow read-only access if submission
+      exists; otherwise return 404.
+    '''
+    req = session.get(AvailabilityRequest, request_id)
+    # Check if request exists
+    if not req:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail='Availability request not found'
+        )
+    # If request exists: check employee membership
+    _require_membership(
+        session=session,
+        restaurant_id=req.restaurant_id,
+        user_id=current_user.id
+    )
+    # Get current datetime (UTC)
+    now_utc = datetime.now(timezone.utc)
+    # No drafts before open
+    if now_utc < req.opens_at_utc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='Availability window has not opened yet'
+        )
+    # Get submission from storage if already exists
+    sub = session.exec(
+        select(AvailabilitySubmission)
+        .where(AvailabilitySubmission.request_id == request_id)
+        .where(AvailabilitySubmission.user_id == current_user.id)
+    ).first()
+    # If closed: allow read-only if submission exists, else 404
+    if now_utc >= req.closes_at_utc:
+        if not sub:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail='No submission found (availability window is closed)'
+            )
+    else:  # Window open: create if missing
+        if not sub:
+            sub = AvailabilitySubmission(
+                request_id=request_id,
+                user_id=current_user.id,
+                status='draft',
+                submitted_at_utc=None
+            )
+            session.add(sub)
+            session.commit()
+            session.refresh(sub)
+    days = session.exec(
+        select(AvailabilityDay.date_local)
+        .where(AvailabilityDay.submission_id == sub.id)
+    ).all()
+
+    return {
+        'submission_id': str(sub.id),
+        'request_id': str(req.id),
+        'restaurant_id': str(req.restaurant_id),
+        'status': sub.status,
+        'available_dates': [d.isoformat() for d in days],
+        'is_window_open': now_utc < req.closes_at_utc,
+        'opens_at_utc': req.opens_at_utc.isoformat(),
+        'closes_at_utc': req.closes_at_utc.isoformat(),
+    }
+
+
+# Employee updates his submission
+@router.put('/availability/submissions/{submission_id}')
+def update_my_submission(
+    *,
+    submission_id: UUID,
+    payload: AvailabilitySubmissionUpdate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+) -> dict:
+    '''Replace all availability dates for the current user's submission.
+
+    Editing is allowed only while the request window is open:
+    opens_at_utc <= now < closes_at_utc (exclusive close).
+    '''
+    sub = session.get(AvailabilitySubmission, submission_id)
+    # Check if submission exists
+    if not sub:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail='Submission not found'
+        )
+    # Check if submission belongs to the current user
+    if sub.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='Submission belongs to another user'
+        )
+    req = session.get(AvailabilityRequest, sub.request_id)
+    # Check if request exists
+    if not req:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail='Availability request not found for submission'
+        )
+    now_utc = datetime.now(timezone.utc)
+    # No edits before open
+    if now_utc < req.opens_at_utc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='Availability window has not opened yet'
+        )
+    # Exclusive close: edits allowed only while now < closes_at_utc
+    if now_utc >= req.closes_at_utc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='Availability window is closed'
+        )
+    # Validate all dates belong to the target year/month
+    for d in payload.available_dates:
+        if d.year != req.year or d.month != req.month:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f'Date {d.isoformat()} is outside requested month' \
+                    f'{req.year}-{req.month:02d}'
+            )
+    # Replace-all: delete than insert
+    session.exec(
+        delete(AvailabilityDay)
+        .where(AvailabilityDay.submission_id == submission_id)
+    )
+    for d in payload.available_dates:
+        session.add(
+            AvailabilityDay(submission_id=submission_id, date_local=d)
+        )
+    sub.status = 'submitted'
+    sub.submitted_at_utc = now_utc
+    session.add(sub)
+    session.commit()
+
+    return {
+        'submission_id': str(sub.id),
+        'request_id': str(req.id),
+        'status': sub.status,
+        'submitted_at_utc': sub.submitted_at_utc.isoformat() \
+            if sub.submitted_at_utc else None,
+        'available_dates': [d.isoformat() for d in payload.available_dates],
+    }
+
 
 

@@ -1,20 +1,33 @@
 from __future__ import annotations
 from datetime import datetime, timezone, date
-from typing import Optional
+from typing import Optional, List
 from uuid import UUID, uuid4
 from sqlmodel import Field, SQLModel
 
 
 class AvailabilityRequestCreate(SQLModel):
-    ''' Request body schema to avoid putting redudant fields. '''
+    """Request body schema for creating a monthly availability request.
+
+    This is kept separate from the DB model to avoid accepting redundant or
+    server-managed fields (e.g. id, created_at).
+    """
     year: int
     month: int
     closes_at_utc: datetime
     opens_at_utc: datetime | None = None
 
 
+class AvailabilitySubmissionUpdate(SQLModel):
+    """Request body schema for replacing all available days in a submission."""
+    available_dates: List[date]
+
+
 class AvailabilityRequest(SQLModel, table=True):
-    ''' Owner or manager sends a request to get availability from the employee. '''
+    """Availability request for a given restaurant and target (year, month).
+
+    - `opens_at_utc` / `closes_at_utc` define the time window when employees
+      can submit/update their availability.
+    """
     id: UUID = Field(default_factory=uuid4, primary_key=True, index=True)
     restaurant_id: UUID = Field(foreign_key='restaurant.id', index=True)
     year: int = Field(index=True)
@@ -31,7 +44,7 @@ class AvailabilityRequest(SQLModel, table=True):
 
 
 class AvailabilitySubmission(SQLModel, table=True):
-    ''' Employee submits the days he is available to work. '''
+    """Employee submission for a specific availability request."""
     id: UUID = Field(default_factory=uuid4, primary_key=True, index=True)
     request_id: UUID = Field(
         foreign_key='availabilityrequest.id', index=True
@@ -42,7 +55,11 @@ class AvailabilitySubmission(SQLModel, table=True):
 
 
 class AvailabilityDay(SQLModel, table=True):
-    ''' Selected days. '''
+    """Selected available days.
+
+    Stored as Warsaw-local calendar dates (DATE) to avoid DST/timezone issues.
+    Composite primary key prevents duplicates within a submission.
+    """
     submission_id: UUID = Field(
         foreign_key='availabilitysubmission.id', primary_key=True
     )

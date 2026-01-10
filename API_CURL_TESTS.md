@@ -198,6 +198,66 @@ curl "$API_URL/v1/restaurants/$RESTAURANT_ID/shifts?start=2026-01-01T00:00:00Z&e
   -H "Authorization: Bearer $EMPLOYEE_TOKEN"
 ```
 
+## 5) Availability (monthly availability requests)
+
+Notes:
+- Owners/managers create an availability request for a target (year, month).
+- Employees can submit/update availability as many times as they want while the window is open.
+- `opens_at_utc` and `closes_at_utc` must be timezone-aware. Use `Z` for UTC or an explicit offset.
+
+### 5.1 Create availability request (owner/manager)
+
+Example creates a request for February 2026. The backend normalizes timestamps to UTC.
+
+```bash
+curl -X POST "$API_URL/v1/restaurants/$RESTAURANT_ID/availability/requests" \
+  -H "Authorization: Bearer $OWNER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "year": 2026,
+    "month": 2,
+    "opens_at_utc": "2026-01-10T10:00:00Z",
+    "closes_at_utc": "2026-01-20T10:00:00Z"
+  }'
+```
+
+Set `AVAILABILITY_REQUEST_ID` from response JSON:
+
+```bash
+AVAILABILITY_REQUEST_ID="PASTE_AVAILABILITY_REQUEST_UUID_HERE"
+```
+
+### 5.2 Get or create my submission (employee)
+
+This returns an existing submission, or creates one if the window is open.
+
+```bash
+curl "$API_URL/v1/availability/requests/$AVAILABILITY_REQUEST_ID/my-submission" \
+  -H "Authorization: Bearer $EMPLOYEE_TOKEN"
+```
+
+Set `AVAILABILITY_SUBMISSION_ID` from response JSON:
+
+```bash
+AVAILABILITY_SUBMISSION_ID="PASTE_AVAILABILITY_SUBMISSION_UUID_HERE"
+```
+
+### 5.3 Replace my available dates (employee)
+
+Notes:
+- Dates are Warsaw-local calendar days (YYYY-MM-DD).
+- The backend validates that all dates are within the request month/year.
+- This is a replace-all update (previous dates are removed).
+
+```bash
+curl -X PUT "$API_URL/v1/availability/submissions/$AVAILABILITY_SUBMISSION_ID" \
+  -H "Authorization: Bearer $EMPLOYEE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "available_dates": ["2026-02-01", "2026-02-03", "2026-02-10"]
+  }'
+```
+
 ## Troubleshooting
 
 ### "Not authenticated"
