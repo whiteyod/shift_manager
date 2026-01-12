@@ -1,5 +1,6 @@
 from __future__ import annotations
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
+from tarfile import data_filter
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select, delete
@@ -259,4 +260,67 @@ def update_my_submission(
     }
 
 
+# Get availability by day
+@router.get('/restaurants/{restaurant_id}/availability/by-day')
+def get_availability_by_day(
+    *,
+    restaurant_id: UUID,
+    date_local: date,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+) -> dict:
+    # Require manager permission
+    membership = _require_membership(
+        session=session,
+        restaurant_id=restaurant_id,
+        user_id=current_user.id
+    )
+    _require_manager_permission(membership)
+    # Find the monthly request for this reataurant and month
+    req = session.exec(
+        select(AvailabilityRequest).where(
+            AvailabilityRequest.restaurant_id == restaurant_id,
+            AvailabilityRequest.year == date_local.year,
+            AvailabilityRequest.month == date_local.month,
+        )
+    ).first()
+    if not req:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail='Availability request not found for this month'
+        )
+    # Query all submissions that include this day
+    rows = session.exec(
+        select(
+            User.id,
+            User.phone_e164,
+            AvailabilitySubmission.status,
+            AvailabilitySubmission.submitted_at_utc,
+        )
+        .select_from(AvailabilityDay)
+        .join(
+            AvailabilitySubmission,
+            AvailabilitySubmission.id == AvailabilityDay.submission_id
+        )
+        .join(User, User.id == AvailabilitySubmission.user_id)
+        .where(AvailabilitySubmission.request_id == req.id)
+        .where(AvailabilityDay.date_local == date_local)
+    ).all()
 
+    return {
+        'restaurant_id': str(restaurant_id),
+        'date_local': date_local.isoformat(),
+        'request_id': str(req.id),
+        'results': [
+            {
+                'user_id': str(user_id),
+                'phone_e164': phone_e164,
+                'submission_id': str(submission_id),
+                'status': status_value,
+                'submitted_at_utc': submitted_at.isoformat() \
+                    if submitted_at else None,
+            }
+            for (user_id, phone_e164, submission_id, status_value, submitted_at) \
+                in rows
+        ]
+    }
