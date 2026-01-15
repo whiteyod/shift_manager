@@ -258,6 +258,15 @@ curl -X PUT "$API_URL/v1/availability/submissions/$AVAILABILITY_SUBMISSION_ID" \
   }'
 ```
 
+### 5.4 Availability by day (owner/manager)
+
+This returns all employees who marked themselves available on the given Warsaw-local date.
+
+```bash
+curl "$API_URL/v1/restaurants/$RESTAURANT_ID/availability/by-day?date_local=2026-02-10" \
+  -H "Authorization: Bearer $OWNER_TOKEN"
+```
+
 ## Troubleshooting
 
 ### "Not authenticated"

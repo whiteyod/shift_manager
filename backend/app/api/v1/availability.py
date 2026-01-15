@@ -1,6 +1,5 @@
 from __future__ import annotations
 from datetime import datetime, timezone, date
-from tarfile import data_filter
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select, delete
@@ -294,6 +293,7 @@ def get_availability_by_day(
         select(
             User.id,
             User.phone_e164,
+            AvailabilitySubmission.id,
             AvailabilitySubmission.status,
             AvailabilitySubmission.submitted_at_utc,
         )
@@ -311,6 +311,7 @@ def get_availability_by_day(
         'restaurant_id': str(restaurant_id),
         'date_local': date_local.isoformat(),
         'request_id': str(req.id),
+        'includes_statuses': ['draft', 'submitted'],
         'results': [
             {
                 'user_id': str(user_id),
