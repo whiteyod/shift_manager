@@ -174,7 +174,7 @@ def get_create_submission(
                 session.commit()
             except IntegrityError as e:
                 session.rollback()
-                constraint = getattr(
+                constraint = getattr(   
                     getattr(e.orig, 'diag', None), 'constraint_name', None
                 )
                 if constraint == 'uq_availabilitysubmission_request_user':
