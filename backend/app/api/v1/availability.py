@@ -3,6 +3,8 @@ from datetime import datetime, timezone, date
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select, delete
+from sqlalchemy.exc import IntegrityError
+
 from app.api.deps import get_current_user
 from app.api.v1.shifts import _require_manager_permission, _require_membership
 from app.db.session import get_session
@@ -89,7 +91,14 @@ def request_availability(
         created_by_user_id=current_user.id
     )
     session.add(req)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError as e:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f'Enable to commit DB changes due to Integrity Error: {e}'
+        )
     session.refresh(req)
 
     return {
@@ -161,7 +170,30 @@ def get_create_submission(
                 submitted_at_utc=None
             )
             session.add(sub)
-            session.commit()
+            try: # Avoid to commit two same requests
+                session.commit()
+            except IntegrityError as e:
+                session.rollback()
+                constraint = getattr(
+                    getattr(e.orig, 'diag', None), 'constraint_name', None
+                )
+                if constraint == 'uq_availabilitysubmission_request_user':
+                    # Fetch another request if it commited in the same time
+                    sub = session.exec(
+                        select(AvailabilitySubmission)
+                        .where(AvailabilitySubmission.request_id == request_id)
+                        .where(AvailabilitySubmission.user_id == current_user.id)
+                    ).first()
+                    if not sub:
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail='Submission creation conflicted but row could not be loaded'
+                        )
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail='Unable to create submission due to a database integrity constraint'
+                    )
             session.refresh(sub)
     days = session.exec(
         select(AvailabilityDay.date_local)
@@ -247,7 +279,28 @@ def update_my_submission(
     sub.status = 'submitted'
     sub.submitted_at_utc = now_utc
     session.add(sub)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError as e:
+        session.rollback()
+        constraint = getattr(
+            getattr(e.orig, 'diag', None), 'constraint_name', None
+        )
+        if constraint == 'ck_availabilitysubmission_status_valid':
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Invalid submission status. Allowed values: draft, submitted.'
+            )
+        if constraint == 'uq_availabilitysubmission_request_user':
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail='Submission already exists for this user and request'
+            )
+        else: 
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail='Unable to commit due to a database integrity constraint'
+            )
 
     return {
         'submission_id': str(sub.id),
