@@ -30,17 +30,18 @@ def create_shift(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ) -> dict:
-    ''' Create a shift for a user.
-     Validations:
-    - Must be a restaurant member (creator must be owner/manager).
-    - end_at must be after start_at (cross-midnight allowed if end_at is next day).
-    - Prevent overlaps for the same employee inside the restaurant.
+    '''Create a shift for a user.
+
+    Validations:
+    - Creator must be a restaurant member (owner/manager).
+    - end_at must be after start_at (cross-midnight allowed when end_at is the next day).
+    - Prevent overlaps for the same employee within the restaurant.
     '''
     creator_membership = _require_membership(
         session=session, restaurant_id=restaurant_id, user_id=current_user.id
     )
     _require_manager_permission(creator_membership)
-    # Ensure the epmloyee exists in this restaurant
+    # Ensure the employee exists in this restaurant
     _require_membership(
         session=session, restaurant_id=restaurant_id, user_id=user_id
     )
@@ -51,7 +52,7 @@ def create_shift(
             status_code=422,
             detail='end_at must be after start_end'
         )
-    # Check shifts overlapping
+    # Check for overlapping shifts
     overpla_stmt = (
         select(Shift)
         .where(Shift.restaurant_id == restaurant_id)
@@ -66,7 +67,7 @@ def create_shift(
             status_code=409,
             detail='Shift overlaps existing shift'
         )
-    # Commit all changes to the DB
+    # Commit changes to the database
     shift = Shift(
         restaurant_id=restaurant_id,
         user_id=user_id,
@@ -96,8 +97,9 @@ def list_shifts(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ) -> list[dict]:
-    ''' List shifts in a date range for the restaurant.
-     Membership:
+    '''List shifts in a date range for the restaurant.
+
+    Membership:
     - Any restaurant member can read shifts (MVP).
     '''
     _require_membership(
@@ -109,7 +111,7 @@ def list_shifts(
         raise HTTPException(
             status_code=422, detail='end must be after start'
         )
-    # Range filter
+    # Date range filter
     stmt = (
         select(Shift)
         .where(Shift.restaurant_id == restaurant_id)

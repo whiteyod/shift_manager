@@ -70,7 +70,7 @@ def request_availability(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail='opens_at must be before closes_at'
         )
-    # Prevent availability requests overlapping
+    # Prevent overlapping availability requests
     existing = session.exec(
         select(AvailabilityRequest).where(
             AvailabilityRequest.restaurant_id == restaurant_id,
@@ -114,7 +114,7 @@ def request_availability(
     }
 
 
-# Employee creates his submission
+# Employee creates their submission
 @router.get('/availability/requests/{request_id}/my-submission')
 def get_create_submission(
     *,
@@ -142,7 +142,7 @@ def get_create_submission(
         restaurant_id=req.restaurant_id,
         user_id=current_user.id
     )
-    # Get current datetime (UTC)
+    # Get the current datetime (UTC)
     now_utc = datetime.now(timezone.utc)
     # No drafts before open
     if now_utc < req.opens_at_utc:
@@ -172,7 +172,7 @@ def get_create_submission(
                 submitted_at_utc=None
             )
             session.add(sub)
-            try: # Avoid to commit two same requests
+            try:  # Avoid committing duplicate submissions
                 session.commit()
             except IntegrityError as e:
                 session.rollback()
@@ -180,7 +180,7 @@ def get_create_submission(
                     getattr(e.orig, 'diag', None), 'constraint_name', None
                 )
                 if constraint == 'uq_availabilitysubmission_request_user':
-                    # Fetch another request if it commited in the same time
+                    # Fetch the existing submission if it was committed concurrently
                     sub = session.exec(
                         select(AvailabilitySubmission)
                         .where(AvailabilitySubmission.request_id == request_id)
@@ -269,7 +269,7 @@ def update_my_submission(
                 detail=f'Date {d.isoformat()} is outside requested month' \
                     f'{req.year}-{req.month:02d}'
             )
-    # Replace-all: delete than insert
+    # Replace-all: delete then insert
     session.exec(
         delete(AvailabilityDay)
         .where(AvailabilityDay.submission_id == submission_id)
@@ -330,7 +330,7 @@ def get_availability_by_day(
         user_id=current_user.id
     )
     _require_manager_permission(membership)
-    # Find the monthly request for this reataurant and month
+    # Find the monthly request for this restaurant and month
     req = session.exec(
         select(AvailabilityRequest).where(
             AvailabilityRequest.restaurant_id == restaurant_id,
