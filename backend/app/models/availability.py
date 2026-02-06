@@ -90,3 +90,14 @@ class AvailabilityDay(SQLModel, table=True):
         foreign_key='availabilitysubmission.id', primary_key=True
     )
     date_local: date = Field(primary_key=True, index=True)
+
+
+class AvailabilityDaysQuery(SQLModel):
+    """
+    Manager query payload: ask for availability on specific Warsaw-local dates.
+ 
+    Notes:
+    - We use `date` (not datetime) because the business question is calendar-day based.
+    - These dates are Warsaw-local by definition in your current model.
+    """
+    dates: list[date]

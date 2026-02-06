@@ -236,7 +236,7 @@ curl "$API_URL/v1/availability/requests/$AVAILABILITY_REQUEST_ID/my-submission" 
   -H "Authorization: Bearer $EMPLOYEE_TOKEN"
 ```
 
-Set `AVAILABILITY_SUBMISSION_ID` from response JSON:
+Set `AVAILABILITY_SUBMISSION_ID` from `submission_id` in the response JSON:
 
 ```bash
 AVAILABILITY_SUBMISSION_ID="PASTE_AVAILABILITY_SUBMISSION_UUID_HERE"
