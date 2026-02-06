@@ -7,12 +7,13 @@ from sqlmodel import Session, select, delete
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import get_current_user
-from app.api.v1.shifts import _require_manager_permission, _require_membership
 from app.db.session import get_session
 from app.models.availability import AvailabilityRequestCreate, \
     AvailabilityRequest, AvailabilitySubmission, AvailabilityDay, \
         AvailabilitySubmissionUpdate
 from app.models.user import User
+from api.v1.helpers import _require_manager_permission, _require_membership, \
+    _availability_by_employee_in_range, _get_monthly_request_or_404
 
 
 router = APIRouter(tags=['availability'])
@@ -378,4 +379,56 @@ def get_availability_by_day(
             for (user_id, phone_e164, submission_id, status_value, submitted_at) \
                 in rows
         ]
+    }
+
+
+# ------------------------ Get Availability by.. API endpoints -----------------------
+
+
+@router.get('/restaurants/{reataurand_id}/availability/by-mont')
+def get_availability_by_month(
+    *,
+    restaurant_id: UUID,
+    year: int,
+    month: int,
+    sesssion: Session = Depends(get_session),
+    current_user: Session = Depends(get_current_user)
+) -> dict:
+    # Auth: owner or manager only
+    membership = _require_membership(
+        session=sesssion,
+        restaurant_id=restaurant_id,
+        user_id=current_user.id
+    )
+    # Check role permission level
+    _require_manager_permission(membership)
+
+    # Make input value restrictions check
+    if month < 1 or month > 12:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='month must be between 1 and 12'
+        )
+
+    start_date_local = date(yers, month, 1)
+    last_day = calendar.monthrange(year, month)[1]
+    end_date_local = date(year, month, last_day)
+
+    req = _get_monthly_request_or_404()
+
+    results = _availability_by_employee_in_range(
+        sesssion=session,
+        restaurant_id=restaurant_id,
+        req=req,
+        start_date_local=start_date_local,
+        end_date_local=end_date_local
+    )
+
+    return {
+        'restaurant_id': str(restaurant_id),
+        'range_start': start_date_local.isoformat(),
+        'range_end': end_date_local.isoformat(),
+        'request_id': str(req.id),
+        'includes': ['draft', 'submitted'],
+        'results': results,
     }

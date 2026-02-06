@@ -18,7 +18,7 @@ def _require_membership(
     restaurant_id: UUID,
     user_id: UUID
 ) -> RestaurantMembership:
-    ''' Ensure the user belongs to the restaurant. '''
+    '''Ensure the user belongs to the restaurant.'''
     membership = session.exec(
         select(RestaurantMembership)
         .where(RestaurantMembership.restaurant_id == restaurant_id)
@@ -34,7 +34,7 @@ def _require_membership(
 
 
 def _require_manager_permission(membership: RestaurantMembership) -> None:
-    ''' Only OWNER/MANAGER can create shifts. '''
+    '''Only OWNER/MANAGER can create shifts.'''
     if membership.role not in {RestaurantRole.OWNER, RestaurantRole.MANAGER}:
         raise HTTPException(
             status_code=403,
@@ -55,7 +55,7 @@ def _get_monthly_request_or_404(
     '''
     Load the monthly AvailabilityRequest for (restaurant_id, year, month).
  
-    Raises 404 if missing.
+    Raises 404 if it is missing.
     '''
     req = session.exec(
         select(AvailabilityRequest).where(
@@ -81,8 +81,7 @@ def _availability_by_employee_in_rnage(
     start_date_local: date,
     end_date_local: date
 ) -> list[dict]:
-    ''' Return availability grouped by employee for a given request + date range.
-    '''
+    '''Return availability grouped by employee for a given request and date range.'''
     rows = session.exec(
         select(
             User.id,
@@ -130,8 +129,9 @@ def _availability_by_employee_in_rnage(
 
 
 def _utc_native(dt: datetime) -> datetime:
-    ''' Normalize datetime for DB comparisons.
-     Why:
+    '''Normalize datetime for DB comparisons.
+
+    Why:
     - DB columns are currently TIMESTAMP WITHOUT TIME ZONE,
       so values may come back as naive.
     - Comparing naive and aware datetimes raises TypeError.
